@@ -1,0 +1,25 @@
+services:
+  fastcgi-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fastcgi-app-container
+    networks:
+      - app-network
+    command: sh -c "spawn-fcgi -p 8080 -n /usr/local/bin/fastcgi-server & nginx -g 'daemon off;'"
+
+  nginx-proxy:
+    image: nginx:latest
+    container_name: nginx-proxy-container
+    ports:
+      - "80:8080"
+    volumes:
+      - ./nginx-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - fastcgi-app
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

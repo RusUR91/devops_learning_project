@@ -1,0 +1,47 @@
+stages:
+  - style
+  - build
+  - integration_test
+  - deploy
+
+style:
+  stage: style
+  tags:
+    - style
+  script:
+    - cd code-samples
+    - clang-format -n --Werror main.c
+  artifacts:
+    paths:
+      - code-samples/main.c
+    expire_in: 30 days
+
+build:
+  stage: build
+  tags:
+    - build
+  script:
+    - cd code-samples && make
+  artifacts:
+    paths: 
+      - code-samples/DO
+    expire_in: 30 days
+
+integration_test:
+  stage: integration_test
+  tags:
+    - build
+  script:
+    - cd code-samples && make tests 
+  allow_failure: false
+
+deploy:
+  stage: deploy
+  tags:
+    - deploy
+  when: manual 
+  script:
+    - chmod +x src/deploy.sh
+    - src/deploy.sh
+  only:
+    - develop  

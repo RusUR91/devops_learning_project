@@ -1,0 +1,40 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "ubuntu/jammy64"
+  
+  
+  config.vm.provision "shell", inline: <<-SHELL
+    while [ ! -d /vagrant/scripts ]; do
+      sleep 1
+    done
+    
+    chmod +x /vagrant/scripts/*
+    /vagrant/scripts/base_script.sh
+  SHELL
+  
+  config.vm.define "manager01" do |manager|
+    manager.vm.hostname = "manager01"
+  
+    manager.vm.network "private_network", ip: "192.168.56.10"
+    manager.vm.network "forwarded_port", guest: 8081, host: 8081, auto_correct: true
+    manager.vm.network "forwarded_port", guest: 8087, host: 8087, auto_correct: true
+    manager.vm.network "forwarded_port", guest: 9000, host: 9001, auto_correct: true
+    
+
+    end
+  
+  config.vm.define "worker01" do |worker|
+    worker.vm.hostname = "worker01"
+    worker.vm.network "private_network", ip: "192.168.56.11"
+    end
+    
+  config.vm.define "worker02" do |worker|
+    worker.vm.hostname = "worker02"
+    worker.vm.network "private_network", ip: "192.168.56.12"
+    end
+
+end
+
