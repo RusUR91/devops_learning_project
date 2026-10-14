@@ -1,0 +1,39 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+
+- name: Install Apache2
+  apt:
+    name: apache2
+    state: present
+
+- name: Start and enable Apache service
+  systemd:
+    name: apache2
+    state: started
+    enabled: yes
+
+- name: Create custom index.html
+  copy:
+    content: |
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <title>Apache Server</title>
+      </head>
+      <body>
+          <h1>Welcome to Apache Server</h1>
+          <p>Server: {{ ansible_hostname }}</p>
+          <p>IP: {{ ansible_default_ipv4.address }}</p>
+      </body>
+      </html>
+    dest: /var/www/html/index.html
+    owner: www-data
+    group: www-data
+    mode: '0644'
+
+- name: Ensure Apache is running
+  service:
+    name: apache2
+    state: started

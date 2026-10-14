@@ -1,0 +1,144 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install PostgreSQL and dependencies
+  apt:
+    name:
+      - postgresql
+      - postgresql-contrib
+      - python3-psycopg2
+      - acl
+    state: present
+
+- name: Get PostgreSQL version
+  shell: psql --version | awk '{print $3}' | cut -d. -f1
+  register: pg_version
+  changed_when: false
+
+- name: Set PostgreSQL version fact
+  set_fact:
+    postgresql_version: "{{ pg_version.stdout }}"
+
+- name: Start and enable PostgreSQL service
+  systemd:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: Wait for PostgreSQL to start
+  wait_for:
+    port: 5432
+    timeout: 30
+
+- name: Create database and user
+  shell: |
+    psql -v ON_ERROR_STOP=1 --username postgres <<-EOSQL
+      DO \$\$
+      BEGIN
+        IF NOT EXISTS (SELECT FROM pg_user WHERE usename = 'devops_user') THEN
+          CREATE USER devops_user WITH PASSWORD 'devops_password';
+        END IF;
+      END
+      \$\$;
+      
+      SELECT 'CREATE DATABASE devops_db OWNER devops_user'
+      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'devops_db')\gexec
+      
+      GRANT ALL PRIVILEGES ON DATABASE devops_db TO devops_user;
+    EOSQL
+  become: yes
+  become_user: postgres
+  register: db_create
+  changed_when: "'CREATE DATABASE' in db_create.stdout or 'CREATE USER' in db_create.stdout"
+
+- name: Create table
+  shell: |
+    psql -v ON_ERROR_STOP=1 -d devops_db <<-EOSQL
+      CREATE TABLE IF NOT EXISTS example_data (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100),
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO devops_user;
+      GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO devops_user;
+    EOSQL
+  become: yes
+  become_user: postgres
+  register: table_create
+  changed_when: "'CREATE TABLE' in table_create.stdout"
+
+- name: Insert data
+  shell: |
+    psql -v ON_ERROR_STOP=1 -d devops_db <<-EOSQL
+      INSERT INTO example_data (name, description) VALUES
+        ('Example 1', 'First example'),
+        ('Example 2', 'Second example'),
+        ('Example 3', 'Third example')
+      ON CONFLICT (id) DO NOTHING;
+    EOSQL
+  become: yes
+  become_user: postgres
+  register: data_insert
+  changed_when: "'INSERT 0' in data_insert.stdout"
+
+- name: Get PostgreSQL config directory
+  find:
+    paths: /etc/postgresql
+    file_type: directory
+    patterns: "{{ postgresql_version }}.*"
+    use_regex: yes
+  register: pg_config_dir
+
+- name: Set PostgreSQL config path
+  set_fact:
+    pg_config_path: "{{ pg_config_dir.files[0].path }}"
+  when: pg_config_dir.files | length > 0
+
+- name: Configure PostgreSQL to accept connections
+  lineinfile:
+    path: "{{ pg_config_path }}/main/postgresql.conf"
+    regexp: '^#?listen_addresses'
+    line: "listen_addresses = '*'"
+    backup: yes
+  notify: restart postgresql
+  when: pg_config_path is defined
+
+- name: Configure PostgreSQL authentication
+  lineinfile:
+    path: "{{ pg_config_path }}/main/pg_hba.conf"
+    line: "host    all             all             0.0.0.0/0               md5"
+    insertafter: '^# IPv4 local connections:'
+    backup: yes
+  notify: restart postgresql
+  when: pg_config_path is defined
+
+- name: Open PostgreSQL port in firewall
+  ufw:
+    rule: allow
+    port: '5432'
+    proto: tcp
+  when: ansible_facts['os_family'] == "Debian"
+  ignore_errors: yes
+
+- name: Verify database content
+  shell: |
+    psql -d devops_db -c "SELECT * FROM example_data;"
+  become: yes
+  become_user: postgres
+  register: verify_data
+  changed_when: false
+
+- name: Display database content
+  debug:
+    var: verify_data.stdout_lines
+
+- name: Display connection info
+  debug:
+    msg: |
+      PostgreSQL is ready!
+      Connection string: psql -h {{ ansible_default_ipv4.address }} -U devops_user -d devops_db -W
+      Password: devops_password

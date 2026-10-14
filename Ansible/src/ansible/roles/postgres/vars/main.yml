@@ -1,0 +1,4 @@
+---
+db_name: devops_db
+db_user: devops_user
+db_password: devops_password

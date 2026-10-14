@@ -1,0 +1,110 @@
+---
+- name: Install Docker & deploy
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Update
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install dependens
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+        state: present
+
+    - name: Add GPG-key Docker
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository
+      ansible.builtin.apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu jammy stable
+        state: present
+
+    - name: Install Docker
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Started Docker
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Copy docker-compose.yml
+      ansible.builtin.copy:
+        src: /home/vagrant/services/docker-compose.yml
+        dest: /home/docker-compose.yml
+        owner: vagrant
+        group: vagrant
+        mode: '0644'
+
+    - name: Install pip
+      ansible.builtin.apt:
+        name: python3-pip
+        state: present
+
+    - name: Install Docker SDK
+      ansible.builtin.pip:
+        name: docker
+        executable: pip3
+
+    - name: Pull images
+      community.docker.docker_image:
+        name: "{{ item }}"
+        source: pull
+      loop:
+        - elanorma/postgres:1.0
+        - elanorma/rabbitmq:1.0
+        - elanorma/payment-service:1.0
+        - elanorma/booking-service:1.0
+        - elanorma/gateway-service:1.0
+        - elanorma/hotel-service:1.0
+        - elanorma/loyalty-service:1.0
+        - elanorma/report-service:1.0
+        - elanorma/session-service:1.0
+
+    - name: Init Swarm
+      ansible.builtin.command: docker swarm init --advertise-addr 192.168.56.10
+      when: inventory_hostname == "manager"
+      run_once: true
+      ignore_errors: yes
+
+
+    - name: Get token
+      command: docker swarm join-token -q worker
+      register: worker_token
+      when: inventory_hostname == "manager"
+
+
+    - name: Save token
+      set_fact:
+        swarm_worker_token: "{{ worker_token.stdout }}"
+      when: inventory_hostname == "manager"
+
+
+    - name: Connect swarm
+      ansible.builtin.command: >
+        docker swarm join
+        --token {{ hostvars['manager'].worker_token.stdout }}
+        192.168.56.10:2377
+      when: inventory_hostname != "manager"
+      ignore_errors: yes
+
+
+    - name: Deploy
+      ansible.builtin.command: docker stack deploy -c /home/vagrant/services/docker-compose.yml app
+      when: inventory_hostname == "manager"
