@@ -1,0 +1,29 @@
+groups:
+  - name: alerts
+    rules:
+      - alert: Low_Free_Memory
+        expr: node_memory_MemFree_bytes < 104857600
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "На {{ $labels.instance }} доступная память меньше 100 МБ"
+          description: "На узле осталось меньше 100 МБ свободной памяти."
+
+      - alert: High_RAM_Usage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemFree_bytes - node_memory_Buffers_bytes - node_memory_Cached_bytes) > 1 * 1000 * 1000 * 1000 
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Затраченная RAM на {{ $labels.instance }} больше 1 ГБ."
+          description: "Затраченная RAM больше 1 ГБ"
+
+      - alert: High_CPU_Usage
+        expr: (irate(container_cpu_usage_seconds_total{container_label_com_docker_swarm_service_name!=''}[1m])) * 100 > 10
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Использование CPU по сервису {{ $labels.instance }} превышает 10%"
+          description: "Использование CPU по сервису превышает 10%"

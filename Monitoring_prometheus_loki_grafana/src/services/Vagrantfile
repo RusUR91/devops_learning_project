@@ -1,0 +1,44 @@
+
+Vagrant.configure("2") do |config|
+
+  config.vm.box = "ubuntu/jammy64"  
+  config.vm.boot_timeout = 6000
+  config.ssh.forward_agent = true
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = "2048"  
+
+  end
+   
+  # MANAGER
+  config.vm.define "manager01", primary: true do |manager|
+    manager.vm.hostname = "manager01"
+    config.vm.synced_folder ".", "/home/vagrant/services"
+    manager.vm.network "private_network", ip: "192.168.56.50"
+    manager.vm.network "forwarded_port", guest: 3000, host: 3000 # graphana 
+    manager.vm.network "forwarded_port", guest: 3100, host: 3100 # loki
+    manager.vm.network "forwarded_port", guest: 8080, host: 8080 # cadvisor
+    manager.vm.network "forwarded_port", guest: 8081, host: 8081 # session
+    manager.vm.network "forwarded_port", guest: 8087, host: 8087 # gateway
+    manager.vm.network "forwarded_port", guest: 9090, host: 9090 # prometheus
+    manager.vm.network "forwarded_port", guest: 9093, host: 9093 # alert
+    manager.vm.network "forwarded_port", guest: 9100, host: 9100 # node-exporter
+    manager.vm.network "forwarded_port", guest: 9115, host: 9115 # blackbox
+    manager.vm.network "forwarded_port", guest: 9443, host: 9443 # portainer
+    manager.vm.network "forwarded_port", guest: 15692, host: 15692 # rabbit
+    manager.vm.provision "shell", path: "./scripts/init_swarm.sh"  
+  end
+
+  # WORKER_1
+  config.vm.define "worker01" do |worker1|
+    worker1.vm.hostname = "worker01"
+    worker1.vm.network "private_network", ip: "192.168.56.51"  
+    worker1.vm.provision "shell", path: "./scripts/join_swarm.sh"
+  end
+
+  # WORKER_2
+  config.vm.define "worker02" do |worker2|
+    worker2.vm.hostname = "worker02"
+    worker2.vm.network "private_network", ip: "192.168.56.52"
+    worker2.vm.provision "shell", path: "./scripts/join_swarm.sh"
+  end
+end 

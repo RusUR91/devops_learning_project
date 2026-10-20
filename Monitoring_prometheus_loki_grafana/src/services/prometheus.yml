@@ -1,0 +1,58 @@
+global:
+  scrape_interval: 10s  
+
+scrape_configs:
+  - job_name: 'services'  
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['session:8081']  
+      - targets: ['gateway:8087'] 
+      - targets: ['booking:8083'] 
+      - targets: ['report:8086'] 
+
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets: ['192.168.56.50:9100'] 
+      - targets: ['192.168.56.51:9100']
+      - targets: ['192.168.56.52:9100']
+
+  - job_name: 'loki'
+    static_configs:
+      - targets: ['loki:3100']
+
+  - job_name: 'cadvisor'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['192.168.56.50:8080']
+      - targets: ['192.168.56.51:8080']
+      - targets: ['192.168.56.52:8080']
+
+  - job_name: 'rabbitmq'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['rabbitmq:15692']
+
+  - job_name: 'blackbox'
+    metrics_path: '/probe'
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+        - google.com
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox_exporter:9115
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+alerting:
+  alertmanagers:
+  - scheme: http
+    static_configs:
+    - targets:
+      - "alertmanager:9093"
